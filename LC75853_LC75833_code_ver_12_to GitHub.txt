@@ -1,0 +1,1129 @@
+/**********************************************************************/
+/*This code is not clean and OFFCOURSE will be possible do it better! */ 
+/*this is only a group of functions to be used as independent code,   */ 
+/*and by this way will be possible to any person can do the changes   */ 
+/*of code and see what happen.                                        */
+/*The code don't depend of any external library or complicated        */
+/*extenal functions.                                                  */
+/*I'm let the values to sent as binnary, this allow swap bit by bit   */
+/* to is possible test segment by segment without convert to HEX      */
+/**********************************************************************/
+/*This code show how is possible work with the driver LC75853 and LC75833 from Sanyo */
+/*Begining of Auto generated code by Atmel studio */
+#include <Arduino.h>
+#include <stdio.h>
+//#include <math.h>
+#include <stdbool.h>
+//
+#define VFD_in 7  // This is the pin number 7 on Arduino UNO
+#define VFD_clk 8 // This is the pin number 8 on Arduino UNO
+#define VFD_ce 9 // This is the pin number 9 on Arduino UNO
+#define VFD_out 10 // This is the pin number 10 on Arduino UNO to be used as input data from panel
+//
+unsigned int numberSeg = 0;  // Variable to supporte the number of segment
+unsigned int numberByte = 0; // Variable to supporte the number byte 
+unsigned int shiftBit=0;
+unsigned int nBitOnBlock=0; // Used to count number of bits and split to 8 bits... (number of byte)
+unsigned int nByteOnBlock=0; 
+unsigned int sequencyByte=0x00;
+bool forward = false;
+bool backward = false;
+bool isRequest = true;
+bool allOn=false;
+bool cycle=false;
+
+void read_char_32bit_stb();
+void send_char_8bit_stb(unsigned char a);
+void send_char_without(unsigned char a);
+void allON_LC75833();
+void allON_LC75853();
+void allOFF_LC75833();
+void allOFF_LC75853();
+
+//ATT: On the Uno and other ATMEGA based boards, unsigned ints (unsigned integers) are the same as ints in that they store a 2 byte value.
+//Long variables are extended size variables for number storage, and store 32 bits (4 bytes), from -2,147,483,648 to 2,147,483,647.
+
+//Note: 75853 send a total of 7*8Bytes total of 56Bits, and the last 8 belongs to the control status display!
+//Note: 75833 send a total of 6*8Bytes total of 48Bits, and the last 8 bits belongs control status display!
+//Note: 75833 need a resistor 1k to VCC at pin /INH, 
+
+//*************************************************//
+void setup() {
+  pinMode(VFD_clk, OUTPUT);
+  pinMode(VFD_in, OUTPUT);
+  pinMode(VFD_ce, OUTPUT);
+  pinMode(VFD_out, INPUT_PULLUP);
+  digitalWrite(VFD_out, HIGH);
+ 
+  pinMode(13, OUTPUT);
+  Serial.begin(115200); // only to debug
+}
+/*******************************************************************/
+/*                  Zone send char's                               */
+/*                                                                 */
+/*******************************************************************/
+void send_bit(bool forward, bool backward){
+unsigned char maskF = 0B00000001; //our bitmask
+unsigned char maskB = 0B10000000; //our bitmask
+byte lTemp = 0B00000001; // Temp to keep 
+byte nWord = 0x00;
+unsigned int mov = 0;
+
+Serial.print("Forward : "); Serial.println(forward);
+Serial.print("Backward: ");Serial.println(backward);
+allON_LC75833(); // All on
+allON_LC75853(); // All on
+    if (forward){
+          if(shiftBit==7){
+             //Do nothing!
+            }else{
+            shiftBit++;
+          }
+            nBitOnBlock++;
+                  if(nBitOnBlock >=36){
+                     nBitOnBlock=0;
+                  }
+          lTemp=maskF << shiftBit;
+    }
+    if (backward){
+          if(shiftBit==0){
+            //Do nothing!
+          }else{
+          shiftBit--;
+          }
+          nBitOnBlock--;
+                 if(nBitOnBlock <=0){
+                    nBitOnBlock=36;
+                 }
+        mov= 7-shiftBit;
+        lTemp=maskB >> mov;
+    } 
+    if (nBitOnBlock >31){
+      lTemp=(~lTemp & 0x07);
+    }
+    else{
+      lTemp=~lTemp;
+    }
+  
+  Serial.print("ShiftBit: "); Serial.print( shiftBit, BIN); Serial.print("  , "); Serial.print(lTemp, BIN); Serial.print(", nBitOnBlock: "); Serial.println(nBitOnBlock);
+  delay(5);
+  
+  
+  nByteOnBlock=(nBitOnBlock/8);  // The signal of "%" returne the remanning of operation, I only want the multiple of 8.
+  if((nBitOnBlock%8) ==0){
+    shiftBit=0;
+  }
+  Serial.print(" number of bit: "); Serial.print(nBitOnBlock);Serial.print(" number of byte: "); Serial.println(nByteOnBlock);
+  send_long0(nByteOnBlock,sequencyByte, lTemp);
+}  
+void send_long0(byte nBlock, byte nByte, byte nWord){
+byte word0 = 0xFF;
+byte word1 = 0xFF;
+byte word2 = 0xFF;
+byte word3 = 0xFF;
+byte word4 = 0x07;
+unsigned int s = 0;
+unsigned long mask = 0B00000000000000000000000000000001;
+
+Serial.print("nByte: "); Serial.print(nByte, BIN);Serial.print(", nWord: "); Serial.println(nWord, BIN);
+
+              switch (nBlock){
+                 case 0: 
+                      digitalWrite(VFD_ce, LOW); //
+                      delayMicroseconds(1);
+                      send_char_8bit_stb(0B01000110); //(0x43) firts 8 bits is address, every fixed as (0B01000110), see if clk finish LOW or HIGH Very important!
+                      delayMicroseconds(1); 
+                      send_char_debug(nWord); send_char_debug(word1); send_char_debug(word2); send_char_debug(word3);send_char_debug(word4);
+                      Serial.println(" Case 0");
+                      break;  
+                case 1: 
+                      digitalWrite(VFD_ce, LOW); //
+                      delayMicroseconds(1);
+                      send_char_8bit_stb(0B01000110); //(0x43) firts 8 bits is address, every fixed as (0B01000110), see if clk finish LOW or HIGH Very important!
+                      delayMicroseconds(1);
+                      send_char_debug(word0); send_char_debug(nWord); send_char_debug(word2); send_char_debug(word3);send_char_debug(word4);
+                      Serial.println(" Case 1");
+                      break;   
+                case 2: 
+                    digitalWrite(VFD_ce, LOW); //
+                    delayMicroseconds(1);
+                    send_char_8bit_stb(0B01000110); //(0x43) firts 8 bits is address, every fixed as (0B01000110), see if clk finish LOW or HIGH Very important!
+                    delayMicroseconds(1);  
+                    send_char_debug(word0); send_char_debug(word1); send_char_debug(nWord); send_char_debug(word3);send_char_debug(word4);
+                    Serial.println(" Case 2");
+                    break; 
+                case 3: 
+                      digitalWrite(VFD_ce, LOW); //
+                      delayMicroseconds(1);
+                      send_char_8bit_stb(0B01000110); //(0x43) firts 8 bits is address, every fixed as (0B01000110), see if clk finish LOW or HIGH Very important!
+                      delayMicroseconds(1); 
+                      send_char_debug(word0); send_char_debug(word1); send_char_debug(word2); send_char_debug(nWord);send_char_debug(word4);
+                      Serial.println(" Case 0");
+                      break;  
+                case 4: 
+                      digitalWrite(VFD_ce, LOW); //
+                      delayMicroseconds(1);
+                      send_char_8bit_stb(0B01000110); //(0x43) firts 8 bits is address, every fixed as (0B01000110), see if clk finish LOW or HIGH Very important!
+                      delayMicroseconds(1);
+                      send_char_debug(word0); send_char_debug(word1); send_char_debug(word2); send_char_debug(word3);send_char_debug(nWord);
+                      Serial.println(" Case 1");
+                      break;   
+              
+                 default:
+                        
+                   Serial.println(" Default");
+                  break; 
+              }
+              
+              switch (sequencyByte){ //-120:127//Last 3 bits is "DD" data direction, and is used
+                   case 0: send_char_debug(0B00001000);  // Activate the DR to set bright a same level of 75853
+                   sequencyByte++; 
+                   break;  // DR set to 1 put the bias 1/2, stay more bright
+                   case 1: send_char_debug(0B10000000);
+                   sequencyByte++; 
+                   break;
+                   case 2: send_char_debug(0B01000000);
+                   sequencyByte=0; 
+                   break;  
+              }
+      
+        digitalWrite(VFD_ce, LOW);  // CE only stay HIGH after sent address of chip!
+        delayMicroseconds(1);
+        Serial.println("Reach this point! ");     
+}
+/*******************************************************************/
+void send_long(){
+unsigned char word0 = 0;
+unsigned char word1 = 0;
+unsigned char word2 = 0;
+unsigned char word3 = 0;
+unsigned char word4 = 0;
+unsigned long mask = 0B00000000000000000000000000000001; //our bitmask
+char oneByte[5]={'0x00', '0x00', '0x00', '0x00', '0x00'};
+byte myByte = 0x00;
+unsigned int i = 0;
+unsigned int s = 0;
+unsigned int weightBit =0;
+    digitalWrite(VFD_ce, LOW); //
+    delayMicroseconds(1);
+    i=0;
+            for (mask = 0B00000000000000000000000000000001; mask>0; mask <<= 1) { //iterate through bit mask
+             if (i>23 & i<32)
+             s=3;
+             if (i <8)
+             s=0;
+             if (i>7 & i<16)
+             s=1;
+             if (i>15 & i<24)
+             s=2;
+             if (i>31)
+             s=4;
+              Serial.print("s: "); Serial.print(s, DEC);Serial.print(", i: "); Serial.println(i, DEC);
+              switch (s){
+                 case 0: word0 = (0x000000ffUL & mask) >> 0;  //
+                      digitalWrite(VFD_ce, LOW); //
+                      delayMicroseconds(1);
+                      send_char_8bit_stb(0B01000110); //(0x43) firts 8 bits is address, every fixed as (0B01000110), see if clk finish LOW or HIGH Very important!
+                      delayMicroseconds(1);  
+                      send_char_without(word0); send_char_without(word1); send_char_without(word2); send_char_without(word3);
+                      switch (s){ //-120:127//Last 3 bits is "DD" data direction, and is used
+                        case 0: send_char_without(0B00001000); break;  // DR set to 1 put the bias 1/2, stay more bright
+                        case 1: send_char_without(0B10000000); break;
+                        case 2: send_char_without(0B01000000); break;
+                      }
+                      digitalWrite(VFD_ce, HIGH);  // CE only stay HIGH after sent address of chip!
+                      delayMicroseconds(1);
+                      delay(500);
+                      //send_char_without(work0);
+                      Serial.print("word0: "); Serial.println(word0, BIN); break;
+                case 1: word1 = (0x0000ff00UL & mask) >> 8; //
+                      digitalWrite(VFD_ce, LOW); //
+                      delayMicroseconds(1);
+                      send_char_8bit_stb(0B01000110); //(0x43) firts 8 bits is address, every fixed as (0B01000110), see if clk finish LOW or HIGH Very important!
+                      delayMicroseconds(1);  
+                      send_char_without(word0); send_char_without(word1); send_char_without(word2); send_char_without(word3);
+                      switch (s){ //-120:127//Last 3 bits is "DD" data direction, and is used
+                        case 0: send_char_without(0B00001000); break;  // DR set to 1 put the bias 1/2, stay more bright
+                        case 1: send_char_without(0B10000000); break;
+                        case 2: send_char_without(0B01000000); break;
+                      }
+                      digitalWrite(VFD_ce, HIGH);  // CE only stay HIGH after sent address of chip!
+                      delayMicroseconds(1);
+                      delay(500);
+                      Serial.print("word1: "); Serial.println(word1, BIN); break;
+                case 2: word2 = (0x00ff0000UL & mask) >> 16;  //i
+                    digitalWrite(VFD_ce, LOW); //
+                    delayMicroseconds(1);
+                    send_char_8bit_stb(0B01000110); //(0x43) firts 8 bits is address, every fixed as (0B01000110), see if clk finish LOW or HIGH Very important!
+                    delayMicroseconds(1);  
+                    send_char_without(word0); send_char_without(word1); send_char_without(word2); send_char_without(word3);
+                    switch (s){ //-120:127//Last 3 bits is "DD" data direction, and is used
+                      case 0: send_char_without(0B00001000); break;  // DR set to 1 put the bias 1/2, stay more bright
+                      case 1: send_char_without(0B10000000); break;
+                      case 2: send_char_without(0B01000000); break;
+                    }
+                    digitalWrite(VFD_ce, HIGH);  // CE only stay HIGH after sent address of chip!
+                    delayMicroseconds(1);
+                    delay(500);
+                    Serial.print("word2: "); Serial.println(word2, BIN); break;
+                case 3: word3 = (0xff000000UL & mask) >> 24; //
+                    digitalWrite(VFD_ce, LOW); //
+                    delayMicroseconds(1);
+                    send_char_8bit_stb(0B01000110); //(0x43) firts 8 bits is address, every fixed as (0B01000110), see if clk finish LOW or HIGH Very important!
+                    delayMicroseconds(1);  
+                    send_char_without(word0); send_char_without(word1); send_char_without(word2); send_char_without(word3);
+                    switch (s){ //-120:127//Last 3 bits is "DD" data direction, and is used
+                      case 0: send_char_without(0B00001000); break;  // DR set to 1 put the bias 1/2, stay more bright
+                      case 1: send_char_without(0B10000000); break;
+                      case 2: send_char_without(0B01000000); break;
+                    }
+                    digitalWrite(VFD_ce, HIGH);  // CE only stay HIGH after sent address of chip!
+                    delayMicroseconds(1);
+                    delay(500);
+                    Serial.print("word3: "); Serial.println(word3, BIN); break;
+                    case 4: word4 = 0b00001111; //
+                    //Serial.println("word4: "); Serial.println(word4, BIN); i++;i++; break;
+          }
+          i++;
+    }
+}
+void send_char(unsigned char a){
+ unsigned char data = 170; //value to transmit, binary 10101010
+ unsigned char mask = 1; //our bitmask
+  data=a;
+  // the validation of data happen when clk go from LOW to HIGH.
+  digitalWrite(VFD_ce, LOW); // When strobe is low, all output is enable. If high, all output will be set to low.
+  delayMicroseconds(5);
+  digitalWrite(VFD_clk,LOW);// need invert the signal to allow 8 bits is is low only send 7 bits
+  delayMicroseconds(5);
+  for (mask = 0b00000001; mask>0; mask <<= 1) { //iterate through bit mask
+  digitalWrite(VFD_clk,LOW);// need invert the signal to allow 8 bits is is low only send 7 bits
+  delayMicroseconds(5);
+    if (data & mask){ // if bitwise AND resolves to true
+      digitalWrite(VFD_in, HIGH);
+      //Serial.print(1);
+    }
+    else{ //if bitwise and resolves to false
+      digitalWrite(VFD_in, LOW);
+      //Serial.print(0);
+    }
+    digitalWrite(VFD_clk,HIGH);// need invert the signal to allow 8 bits is is low only send 7 bits
+    delayMicroseconds(5);
+    //
+    digitalWrite(VFD_ce, HIGH); // When strobe is low, all output is enable. If high, all output will be set to low.
+  delayMicroseconds(5);
+  }
+}
+void send_char_step(unsigned char a){
+ unsigned char data = 170; //value to transmit, binary 10101010
+ unsigned char mask = 1; //our bitmask
+  data=a;
+        for (mask = 0b00000001; mask>0; mask <<= 1) { //iterate through bit mask
+        digitalWrite(VFD_clk, LOW);
+        delayMicroseconds(5);
+          if (data & mask){ // if bitwise AND resolves to true
+            digitalWrite(VFD_in, HIGH);
+            //Serial.print(1);
+          }
+          else{ //if bitwise and resolves to false
+            digitalWrite(VFD_in, LOW);
+            //Serial.print(0);
+          }
+        digitalWrite(VFD_clk,HIGH);// need invert the signal to allow 8 bits is is low only send 7 bits
+        delayMicroseconds(5);
+     }
+     Serial.println(" Byte sended!");
+}
+/*******************************************************************/
+void send_char_debug(unsigned char a){
+ unsigned char data = 170; //value to transmit, binary 10101010
+ unsigned char mask = 1; //our bitmask
+  data=a;
+        for (mask = 0b00000001; mask>0; mask <<= 1) { //iterate through bit mask
+        digitalWrite(VFD_clk, LOW);
+        delayMicroseconds(5);
+          if (data & mask){ // if bitwise AND resolves to true
+            digitalWrite(VFD_in, HIGH);
+            Serial.print(1);
+          }
+          else{ //if bitwise and resolves to false
+            digitalWrite(VFD_in, LOW);
+            Serial.print(0);
+          }
+          digitalWrite(VFD_clk,HIGH);// need invert the signal to allow 8 bits is is low only send 7 bits
+          delayMicroseconds(5);
+        }
+        Serial.println(" one byte sended!");
+}
+void send_char_without(unsigned char a){
+ unsigned char data = 170; //value to transmit, binary 10101010
+ unsigned char mask = 1; //our bitmask
+  data=a;
+        for (mask = 0b00000001; mask>0; mask <<= 1) { //iterate through bit mask
+        digitalWrite(VFD_clk, LOW);
+        delayMicroseconds(5);
+          if (data & mask){ // if bitwise AND resolves to true
+            digitalWrite(VFD_in, HIGH);
+            //Serial.print(1);
+          }
+          else{ //if bitwise and resolves to false
+            digitalWrite(VFD_in, LOW);
+            //Serial.print(0);
+          }
+          digitalWrite(VFD_clk,HIGH);// need invert the signal to allow 8 bits is is low only send 7 bits
+          delayMicroseconds(5);
+        }
+        //Serial.println(" one byte sended!");
+}
+/*******************************************************************/
+void send_char_8bit_stb(unsigned char a){
+ unsigned char data = 170; //value to transmit, binary 10101010
+ unsigned char mask = 1; //our bitmask
+ int i = -1;
+  data=a;
+  digitalWrite(VFD_ce, LOW);
+    delayMicroseconds(1);
+  // This lines is because the clk have one advance in data, see datasheet of sn74HC595
+  // case don't have this signal instead of "." will se "g"
+                for (mask = 0b00000001; mask>0; mask <<= 1) { //iterate through bit mask
+                 i++;
+                 digitalWrite(VFD_clk, LOW);
+                delayMicroseconds(1);
+                        if (data & mask){ // if bitwise AND resolves to true
+                          digitalWrite(VFD_in, HIGH);
+                          //Serial.print(1);
+                        }
+                        else{ //if bitwise and resolves to false
+                          digitalWrite(VFD_in, LOW);
+                          //Serial.print(0);
+                        }
+                  delayMicroseconds(1);
+                  digitalWrite(VFD_clk, HIGH); // Clock must finish HIGH
+                  delayMicroseconds(1);
+                  //Serial.println(i); 
+                }
+        digitalWrite(VFD_ce, HIGH);  // CE only stay HIGH after sent address of chip!
+        delayMicroseconds(1);
+}
+/*******************************************************************/
+/*                      Zone of CTRL                               */
+/*                                                                 */
+/*******************************************************************/
+void ctrl_LC75853_ambar(){
+  Serial.println("Ambar");
+unsigned char grp=0;
+// S0,S1, last byte --> K0,K1,P0,P1,SC,DR,0,0
+ for(grp=0; grp<3;grp++){  
+digitalWrite(VFD_ce, LOW); //
+delayMicroseconds(1);
+send_char_8bit_stb(0B01000010); //(0x42) firts 8 bits is address, every fixed as (0B01000010), see if clk finish LOW or HIGH Very important!
+delayMicroseconds(1);
+// 
+    send_char_without(0B00000000);  send_char_without(0B00000000); //   1:8      -9:16// 
+    send_char_without(0B00000000);  send_char_without(0B00000000); //  17:24    -25:32// 
+    send_char_without(0B00000000);  send_char_without(0B00000000); //  33:40    -41:48//  (0B:S0,S1,000000) sleep modes
+        
+    switch (grp){ //Last 2 bits is "DD" data direction, and is used
+                case 0: send_char_without(0B00100000); break;
+                case 1: send_char_without(0B10000000); break;
+                case 2: send_char_without(0B01000000); break;
+              }
+   //send_char_without(0B00110100); // SC set to 1, inhibit the display
+   //send_char_without(0B00100111); // DR set to 1 put the bias 1/2, stay more bright
+   //send_char_without(0B00000100); // This turn off segments parts below to reduce information on LCD
+delayMicroseconds(1);
+digitalWrite(VFD_ce, LOW); // 
+}
+}
+void ctrl_LC75853_green(){
+  Serial.println("Green");
+unsigned char grp=0;
+//0B: 0, 0, 0, 0, S0, S1, last --> K0, K1, P0, P1, SC, DR, 0, 0
+for(grp=0; grp<3;grp++){ 
+digitalWrite(VFD_ce, LOW);
+delayMicroseconds(1);
+send_char_8bit_stb(0B01000010); //(0x42) firts 8 bits is address, every fixed as (0B01000010), see if clk finish LOW or HIGH Very important!
+delayMicroseconds(1);
+//
+    send_char_without(0B00000000);  send_char_without(0B00000000); //   1:8      -9:16// 
+    send_char_without(0B00000000);  send_char_without(0B00000000); //  17:24    -25:32// 
+    send_char_without(0B00000000);  send_char_without(0B00000000); //  33:40    -41:48//  (0B: S0,S1,000000) sleep mode
+//       
+     switch (grp){ //Last 2 bits is "DD" data direction, and is used
+                case 0: send_char_without(0B00100000); break; // Bit 2(from right) is the active of green!
+                case 1: send_char_without(0B10000000); break;
+                case 2: send_char_without(0B01000000); break;
+              }
+   //send_char_without(0B00110100); // SC set to 1, inhibit the display
+   //send_char_without(0B00100000); // DR set to 1 put the bias 1/2, stay more bright
+   //send_char_without(0B00000100); // This turn off segments parts below to reduce information on LCD
+delayMicroseconds(1);
+digitalWrite(VFD_ce, LOW); // 
+ }
+}
+void ctrl_LC75853_lessDataOnDisplay(){
+unsigned char group=0;
+// S0,S1, last --> K0,K1,P0,P1,SC,DR,0,0
+for(int i=0; i<3;i++){   // 
+      group=i;
+digitalWrite(VFD_ce, LOW); //
+delayMicroseconds(1);
+send_char_8bit_stb(0B01000010); //(0x42) firts 8 bits is address, every fixed as (0B01000010), see if clk finish LOW or HIGH Very important!
+delayMicroseconds(1);
+// On the 75853 the message have first 16*8 bits more 8 times to performe 128 bits(last byte is control: 0BXXX00000)
+    
+    send_char_without(0B00000000);  send_char_without(0B00000000); //   1:8      -9:16// 
+    send_char_without(0B00000000);  send_char_without(0B00000000); //  17:24    -25:32// 
+    send_char_without(0B00000000);  send_char_without(0B00000000); //  33:40    -41:48//  (0B,S0,S1,000000) sleep modes
+        
+     switch (group){ //Last 3 bits is "DD" data direction, and is used
+                case 0: send_char_without(0B00100100); break;
+                case 1: send_char_without(0B10000000); break;
+                case 2: send_char_without(0B01000000); break;
+              }
+   //send_char_without(0B00010000); // SC set to 1, inhibit the display
+   //send_char_without(0B00100000); // DR set to 1 put the bias 1/2, stay more bright
+   //send_char_without(0B00000100); // This turn off segments parts below to reduce information on LCD
+}
+delayMicroseconds(1);
+digitalWrite(VFD_ce, LOW); // 
+delayMicroseconds(1);
+}
+void ctrl_LC75853_moreDataOnDisplay(){
+unsigned char group=0;
+// S0,S1, last --> K0,K1,P0,P1,SC,DR,0,0
+for(int i=0; i<3;i++){   // 
+      group=i;
+digitalWrite(VFD_ce, LOW); //
+delayMicroseconds(1);
+send_char_8bit_stb(0B01000010); //(0x42) firts 8 bits is address, every fixed as (0B01000010), see if clk finish LOW or HIGH Very important!
+delayMicroseconds(1);
+// On the 75853 the message have first 16*8 bits more 8 times to performe 128 bits(last byte is control: 0BXXX00000)
+    
+    send_char_without(0B00000000);  send_char_without(0B00000000); //   1:8      -9:16// 
+    send_char_without(0B00000000);  send_char_without(0B00000000); //  17:24    -25:32// 
+    send_char_without(0B00000000);  send_char_without(0B00000000); //  33:40    -41:48//  (0B,S0,S1,000000) sleep modes
+        
+    switch (group){ //Last 3 bits is "DD" data direction, and is used
+                case 0: send_char_without(0B00100100); break;
+                case 1: send_char_without(0B10000000); break;
+                case 2: send_char_without(0B01000000); break;
+              }
+   //send_char_without(0B00110000); // SC set to 1, inhibit the display
+   //send_char_without(0B00100000); // DR set to 1 put the bias 1/2, stay more bright
+   //send_char_without(0B00000100); // This turn off segments parts below to reduce information on LCD
+}
+delayMicroseconds(1);
+digitalWrite(VFD_ce, LOW); // 
+delayMicroseconds(1);
+}
+/*******************************************************************/
+/*                  Zone Read char's                               */
+/*                                                                 */
+/*******************************************************************/
+void read_char_32bit_stb(){
+ unsigned long mask = 0B00000000000000000000000000000001; //our bitmask
+ unsigned int i = -1;
+ unsigned int n = 0;
+ unsigned int indexOfOne =0;
+ unsigned int val = 0;
+ bool keyArr[32];
+ unsigned long numberBIN=0;
+    digitalWrite(VFD_ce, LOW); //
+    delayMicroseconds(1);
+    send_char_8bit_stb(0B01000011); //(0x43) firts 8 bits is address, every fixed as (0B01000110), see if clk finish LOW or HIGH Very important!
+    delayMicroseconds(1);
+            for (mask = 0B00000000000000000000000000000001; mask>0; mask <<= 1){ //iterate through bit mask
+             i++;
+             digitalWrite(VFD_clk, LOW);
+             delayMicroseconds(1);
+             digitalWrite(VFD_clk,HIGH);//
+             delayMicroseconds(1); 
+             val = digitalRead(VFD_out);
+              //Serial.print(val,BIN);Serial.print(' ');
+                      if (val){ // if bitwise AND resolves to true
+                      //Serial.print(1);
+                      keyArr[i] = HIGH;
+                      }
+                      else{ //if bitwise and resolves to false
+                      //Serial.print(0);
+                      keyArr[i] = LOW;
+                      }
+              delayMicroseconds(1);    
+            }   
+    digitalWrite(VFD_ce, LOW);
+    delayMicroseconds(1);
+    // cycle to show the contents of array boolean
+    for(n=0; n<32; n++){
+       if(keyArr[n]){
+          indexOfOne=32-n;
+       }
+    }
+     if(isRequest){  // This is to avoid the second call from the loop... it is depending of diagram of process to read buttons!!!
+      if(indexOfOne > 7){
+         Serial.print(" Array of keys, "); Serial.println(indexOfOne);
+           keyAction(indexOfOne);
+      }   
+     }
+ isRequest=!isRequest;
+}
+/******************************************************************/
+/*                    Action of press keys                        */
+/******************************************************************/
+void keyAction(unsigned int val){
+        switch (val){ //
+            case 32: Serial.println(" This is Up button"); 
+                      break;
+            case 27: Serial.println(" This is Left button"); 
+                      break;
+            case 26: Serial.println(" This is Right button"); 
+                      break;
+            case 31: Serial.println(" This is Down button"); 
+                      break;
+            case 25: forward=true; Serial.println(" Forward = True ");  
+                      send_bit( true,  false); 
+                      forward=false;
+                      break;
+            case 24: backward=true; Serial.println(" Backward = True "); 
+                      send_bit( false, true);
+                      backward=false;
+                      break;
+            case 23: Serial.println("Cleared: nBitOfBlock, nByteOfBlock, shiftBit, sequencyByte!");
+                     nBitOnBlock=0;
+                     nByteOnBlock=0;
+                     shiftBit=0;
+                     sequencyByte=0;
+                      break;
+            case 10: ctrl_LC75853_ambar();
+                      break;
+            case 9:  ctrl_LC75853_green();
+                      break;
+            case 8:  ctrl_LC75853_lessDataOnDisplay();
+                      break;
+            case 15: ctrl_LC75853_moreDataOnDisplay();
+                      break;
+            case 18: showWheels();
+                      break;
+            case 28: showHiFolks();
+                      break;   
+         }
+}
+/*******************************************************************/
+/*                  Zone find segments                             */
+/*                                                                 */
+/*******************************************************************/
+void find_segments(){
+byte mMask = 0b00000001;
+unsigned int nSeg =0;
+//First FOR is to determine the group 00, 01 & 10.
+//Second FOR is to define the number of byte block inside of message.
+//Third FOR is to shift the bit on the Byte message.
+unsigned char group=0;
+     for(int group=0; group<3;group++){   // Do until n bits  
+        for(int nByte=0; nByte<5; nByte++){
+          for (mMask = 0b00000001; mMask>0; mMask <<= 1){ 
+           segments(nByte, mMask, group);
+           nSeg++;
+           Serial.println(nSeg, DEC);
+            delay (500);
+          }
+        }
+    }
+}
+void segments(byte nByte, byte nData, byte group){
+byte segment = 0b11111111;
+segment = ~(segment & nData);
+// This IF is to avoid sent the second half word of the byte 5!!!
+numberByte=nByte; //Variable to be used to print the number of byte is passed to send!
+if (nByte==4){
+segment=segment & 0x0F;  
+}
+Serial.print("nByte: ");Serial.print(nByte, DEC);
+Serial.print(", nData: ");Serial.print(nData, BIN);
+Serial.print(", group: ");Serial.print(group, BIN);
+Serial.print(", segment: ");Serial.print(segment, BIN);
+Serial.println();
+
+//The p0, p1, p2 & p3 at 0, means all pins from s1 to s12 will belongs to segments, other's settings tell will px is a port general purpose!
+    digitalWrite(VFD_ce, LOW); //
+    delayMicroseconds(1);
+    send_char_8bit_stb(0B01000110); //(0x46) firts 8 bits is address, every fixed as (0B01000110), see if clk finish LOW or HIGH Very important!
+    delayMicroseconds(1);
+    //   
+    switch (nByte){
+     case 0: numberSeg=0;
+              send_char_step(segment);  send_char_step(0xFF); //  8:1, 16:9       
+             send_char_step(0xFF);  send_char_step(0xFF); //  24:17, 32:25   
+             send_char_step(0x0F);    // at 75833JE the bit: 34, 35 & 36 must be "0", see datasheet!
+              break;
+     case 1: numberSeg=0;
+              send_char_step(0xFF);  send_char_step(segment); //  8:1, 16:9       
+             send_char_step(0xFF);  send_char_step(0xFF); //  24:17, 32:25   
+             send_char_step(0x0F);    // at 75833JE the bit: 34, 35 & 36 must be "0", see datasheet!
+             numberSeg=0; break;
+     case 2: numberSeg=0;
+              send_char_step(0xFF);  send_char_step(0xFF); //  8:1, 16:9       
+             send_char_step(segment);  send_char_step(0xFF); //  24:17, 32:25   
+             send_char_step(0x0F);    // at 75833JE the bit: 34, 35 & 36 must be "0", see datasheet!
+             numberSeg=0; break;
+     case 3: numberSeg=0;
+              send_char_step(0xFF);  send_char_step(0xFF); //  8:1, 16:9       
+             send_char_step(0xFF);  send_char_step(segment); //  24:17, 32:25   
+             send_char_step(0x0F);    // at 75833JE the bit: 34, 35 & 36 must be "0", see datasheet!
+             break;        
+     case 4: numberSeg=0;
+              send_char_step(0xFF);  send_char_step(0xFF); //  8:1, 16:9       
+             send_char_step(0xFF);  send_char_step(0xFF); //  24:17, 32:25   
+             send_char_step(segment);//Send only first word of Byte because at 75833JE the bit: 34, 35 & 36 must be "0", see datasheet! 
+             numberSeg=0; break;          
+    }
+            switch (group){ //-120:127//Last 3 bits is "DD" data direction, and is used
+              case 0: send_char_without(0B00001000); break;  // DR set to 1 put the bias 1/2, stay more bright
+              case 1: send_char_without(0B10000000); break;
+              case 2: send_char_without(0B01000000); break;
+            }
+    // to mark the 3 groups of 120 bits, 00, 01, 10.
+    delayMicroseconds(1);
+    digitalWrite(VFD_ce, LOW); // 
+    delayMicroseconds(1);
+}
+/*******************************************************************/
+/*                  Zone switch all ON                             */
+/*                      and OFF                                    */
+/*******************************************************************/
+void allON_LC75833(){
+for(int i=0; i<3;i++){   // Do until n bits
+    digitalWrite(VFD_ce, LOW); //
+    delayMicroseconds(1);
+    send_char_8bit_stb(0B01000110); //(0x46) firts 8 bits is address, every fixed as (0B01000110), see if clk finish LOW or HIGH Very important!
+    delayMicroseconds(1);
+    // On the 75878 the message have first 16*8 bits more 8 times to performe 128 bits(last byte is control: 0BXXX00000)
+        send_char_without(0B11111111);  send_char_without(0B11111111); //   1:8       
+        send_char_without(0B11111111);  send_char_without(0B11111111); //  17:24    
+        send_char_without(0B00001111);    // at 75833JE the bit: 34, 35 & 36 must be "0", see datasheet!
+            switch (i){ //-120:127//Last 3 bits is "DD" data direction, and is used
+              case 0: send_char_without(0B00001000); break;  // DR set to 1 put the bias 1/2, stay more bright
+              case 1: send_char_without(0B10000000); break;
+              case 2: send_char_without(0B01000000); break;
+            }
+    // to mark the 3 groups of 120 bits, 00, 01, 10.
+    delayMicroseconds(1);
+    digitalWrite(VFD_ce, LOW); // 
+    delayMicroseconds(1);
+    }
+}
+void allOFF_LC75833(){
+for(int i=0; i<3;i++){ // Dx until 600 bits
+digitalWrite(VFD_ce, LOW); //
+delayMicroseconds(1);
+send_char_8bit_stb(0B01000110); //(0x46) firts 8 bits is address, every fixed as (0B01000010), see if clk finish LOW or HIGH Very important!
+delayMicroseconds(1);
+// On the 75833 the message have first 
+    
+    send_char_without(0B00000000);  send_char_without(0B00000000); //   1:8      -9:16// 
+    send_char_without(0B00000000);  send_char_without(0B00000000); //  17:24    -25:32// 
+    send_char_without(0B00000000); 
+        switch (i){ //120:127// Last 3 bits is "DD" data direction, and is used
+          case 0: send_char_without(0B00001000); break;
+          case 1: send_char_without(0B10000000); break;
+          case 2: send_char_without(0B01000000); break;
+        }
+// to mark the 3 groups of 120 bits, 00, 01, 10.
+delayMicroseconds(1);
+digitalWrite(VFD_ce, LOW); // 
+ }
+}
+void allON_LC75853(){
+//0B: 0, 0, 0, 0, S0, S1 --> K0, K1, P0, P1, SC, DR, 0, 0
+ for(int i=0; i<3;i++){   // 
+      digitalWrite(VFD_ce, LOW); //
+      delayMicroseconds(1);
+      send_char_8bit_stb(0B01000010); //(0x42) firts 8 bits is address, every fixed as (0B01000010), see if clk finish LOW or HIGH Very important!
+      delayMicroseconds(1);
+      // On the 75853 the message have first 16*8 bits more 8 times to performe 128 bits(last byte is control: 0BXXX00000)
+          
+          send_char_without(0B11111111);  send_char_without(0B11111111); //   1:8      -9:16// 
+          send_char_without(0B11111111);  send_char_without(0B11111111); //  17:24    -25:32// 
+          send_char_without(0B11111111);  send_char_without(0B00000011); //  33:40    -41:48//
+              switch (i){ //Last 3 bits is "DD" data direction, and is used
+                case 0: send_char_without(0B00100100); break;
+                case 1: send_char_without(0B10000000); break;
+                case 2: send_char_without(0B01000000); break;
+              }
+      // to mark the 3 groups of 120 bits, 00, 01, 10.
+      delayMicroseconds(1);
+      digitalWrite(VFD_ce, LOW); // 
+      }
+}
+void allOFF_LC75853(){
+for(int i=0; i<3;i++){ // Dx until 600 bits
+digitalWrite(VFD_ce, LOW); //
+delayMicroseconds(1);
+send_char_8bit_stb(0B01000010); //(0x41) firts 8 bits is address, every fixed as (0B01001011), see if clk finish LOW or HIGH Very important!
+delayMicroseconds(1);
+// On the 75878 the message have first 16*8 bits more 8 times to performe 128 bits(last byte is control: 0BXXX00000)
+    
+    send_char_without(0B00000000);  send_char_without(0B00000000); //   1:8      -9:16// 
+    send_char_without(0B00000000);  send_char_without(0B00000000); //  17:24    -25:32//  
+    send_char_without(0B00000000);  send_char_without(0B00000000); //  33:40    -41:48//  
+        switch (i){ //120:127// Last 3 bits is "DD" data direction, and is used
+          case 0: send_char_without(0B00100100); break;
+          case 1: send_char_without(0B10000000); break;
+          case 2: send_char_without(0B01000000); break;
+        }
+ 
+// to mark the 3 groups of 120 bits, 00, 01, 01.
+delayMicroseconds(1);
+digitalWrite(VFD_ce, LOW); // 
+
+ }
+}
+/*******************************************************************/
+/*              Zone of Messages to LC75833                        */
+/*                     Letter's "HI_FO"                            */
+/*******************************************************************/
+void LC75833_00(void){
+digitalWrite(VFD_ce, LOW); //
+delayMicroseconds(1);
+send_char_8bit_stb(0B01000110); //(0x41) firts 8 bits is address, every fixed as (0B01001011), see if clk finish LOW or HIGH Very important!
+delayMicroseconds(1);
+    send_char_without(0B00000000);  send_char_without(0B00000000); // 0-1    1:8     
+    send_char_without(0B00000000);  send_char_without(0B10011000); // 2-3  17:24     
+    send_char_without(0B00000000);  
+    //
+    send_char_without(0B00001000);   // DR set to 1 put the bias 1/2, stay more bright
+delayMicroseconds(1);
+digitalWrite(VFD_ce, LOW); // 
+delayMicroseconds(1);
+}
+void LC75833_10(void){
+digitalWrite(VFD_ce, LOW); //
+delayMicroseconds(1);
+send_char_8bit_stb(0B01000110); //(0x41) firts 8 bits is address, every fixed as (0B01001011), see if clk finish LOW or HIGH Very important!
+delayMicroseconds(1);
+    send_char_without(0B00011010);  send_char_without(0B10001000); // 0-1    1:8     
+    send_char_without(0B00000011);  send_char_without(0B00000000); // 2-3  17:24     
+    send_char_without(0B00000000);  
+    //
+     send_char_without(0B10000000); // DR set to 1 put the bias 1/2, stay more bright
+delayMicroseconds(1);
+digitalWrite(VFD_ce, LOW); // 
+delayMicroseconds(1);
+}
+void LC75833_01(void){
+digitalWrite(VFD_ce, LOW); //
+delayMicroseconds(1);
+send_char_8bit_stb(0B01000110); //(0x41) firts 8 bits is address, every fixed as (0B01001011), see if clk finish LOW or HIGH Very important!
+delayMicroseconds(1);
+    send_char_without(0B10011000);  send_char_without(0B00000010); // 0-1    1:8     
+    send_char_without(0B00011100);  send_char_without(0B11000001); // 2-3  17:24     
+    send_char_without(0B00000000);  
+    //
+    send_char_without(0B01000000);
+delayMicroseconds(1);
+digitalWrite(VFD_ce, LOW); // 
+delayMicroseconds(1);
+}
+/*******************************************************************/
+/*              Zone of Messages to LC75853                        */
+/*                    Letter's "LKS"                               */
+/*******************************************************************/
+void LC75853_00(void){
+digitalWrite(VFD_ce, LOW); //
+delayMicroseconds(1);
+send_char_8bit_stb(0B01000010); //(0x41) firts 8 bits is address, every fixed as (0B01001011), see if clk finish LOW or HIGH Very important!
+delayMicroseconds(1);
+// On the 75878 the message have first 16*8 bits more 8 times to performe 128 bits(last byte is control: 0BXXX00000)
+    //blk0
+    send_char_without(0B00000000);  send_char_without(0B00000000); // 0-1    1:8    -9:16// 
+    send_char_without(0B00000000);  send_char_without(0B00000000); // 2-3  17:24    -25:32//  
+    send_char_without(0B00000000);  send_char_without(0B00000000); // 4-5  33:40    -41:48//
+    //
+    send_char_without(0B00100100);  
+delayMicroseconds(1);
+digitalWrite(VFD_ce, LOW); // 
+delayMicroseconds(1);
+}
+void LC75853_10(void){
+digitalWrite(VFD_ce, LOW); //
+delayMicroseconds(1);
+send_char_8bit_stb(0B01000010); //(0x41) firts 8 bits is address, every fixed as (0B01001011), see if clk finish LOW or HIGH Very important!
+delayMicroseconds(1);
+// On the 75853 the message have first 16*8 bits more 8 times to performe 128 bits(last byte is control: 0BXXX00000)
+    //blk1
+    send_char_without(0B00000111);  send_char_without(0B10000000); // 0-1   1:8      -9:16// 
+    send_char_without(0B00001001);  send_char_without(0B01000101); // 2-3  17:24    -25:32//  
+    send_char_without(0B00010101);  send_char_without(0B00000001); // 4-5  33:40    -41:48//
+    //
+    send_char_without(0B10000000);  //This command only can have the sequency number of block!!!
+delayMicroseconds(1);
+digitalWrite(VFD_ce, LOW); // 
+delayMicroseconds(1);
+}
+void LC75853_01(void){
+digitalWrite(VFD_ce, LOW); //
+delayMicroseconds(1);
+send_char_8bit_stb(0B01000010); //(0x41) firts 8 bits is address, every fixed as (0B01001011), see if clk finish LOW or HIGH Very important!
+delayMicroseconds(1);
+// On the 75878 the message have first 16*8 bits more 8 times to performe 128 bits(last byte is control: 0BXXX00000)
+    //blk2
+    send_char_without(0B00000010);  send_char_without(0B00000000); // 0-1   1:8      -9:16// 
+    send_char_without(0B00000000);  send_char_without(0B00000000); // 2-3  17:24    -25:32// 
+    send_char_without(0B00000000);  send_char_without(0B00000000); // 4-5  33:40    -41:48// 
+    //
+    send_char_without(0B01000000); 
+delayMicroseconds(1);
+digitalWrite(VFD_ce, LOW); // 
+delayMicroseconds(1);
+}
+/**************************************************** **************/
+/*                            Animation wheels                     */
+/*******************************************************************/
+void LC75833_00_anime0(void){
+digitalWrite(VFD_ce, LOW); //
+delayMicroseconds(1);
+send_char_8bit_stb(0B01000110); //(0x41) firts 8 bits is address, every fixed as (0B01001011), see if clk finish LOW or HIGH Very important!
+delayMicroseconds(1);
+// On the 75878 the message have first 16*8 bits more 8 times to performe 128 bits(last byte is control: 0BXXX00000)
+    //blk0
+    send_char_without(0B10000000);  send_char_without(0B00110100); // 0-1    1:8     
+    send_char_without(0B01001011);  send_char_without(0B00000000); // 2-3  17:24     
+    send_char_without(0B00000000);   
+    //
+    send_char_without(0B00001000); // 4-5  33:40     
+delayMicroseconds(1);
+digitalWrite(VFD_ce, LOW); // 
+delayMicroseconds(1);
+}
+void LC75833_10_anime1(void){
+digitalWrite(VFD_ce, LOW); //
+delayMicroseconds(1);
+send_char_8bit_stb(0B01000110); //(0x41) firts 8 bits is address, every fixed as (0B01001011), see if clk finish LOW or HIGH Very important!
+delayMicroseconds(1);
+// On the 75878 the message have first 16*8 bits more 8 times to performe 128 bits(last byte is control: 0BXXX00000)
+    //blk1
+    send_char_without(0B00000000);  send_char_without(0B00000000); // 0-1    1:8      
+    send_char_without(0B00000000);  send_char_without(0B00000000); // 2-3  17:24   
+    send_char_without(0B00000000);  
+    //
+    send_char_without(0B10001000); // 4-5  33:40      
+delayMicroseconds(1);
+digitalWrite(VFD_ce, LOW); // 
+delayMicroseconds(1);
+}
+void LC75833_01_anime2(void){
+digitalWrite(VFD_ce, LOW); //
+delayMicroseconds(1);
+send_char_8bit_stb(0B01000110); //(0x41) firts 8 bits is address, every fixed as (0B01001011), see if clk finish LOW or HIGH Very important!
+delayMicroseconds(1);
+// On the 75878 the message have first 16*8 bits more 8 times to performe 128 bits(last byte is control: 0BXXX00000)
+    //blk2
+    send_char_without(0B00000000);  send_char_without(0B00000000); // 0-1    1:8   
+    send_char_without(0B00000000);  send_char_without(0B00000000); // 2-3  17:24    
+    send_char_without(0B00000000);  
+    //
+    send_char_without(0B01001000); // 4-5  33:40    
+delayMicroseconds(1);
+digitalWrite(VFD_ce, LOW); // 
+delayMicroseconds(1);
+}
+void LC75833_00_anime3(void){
+digitalWrite(VFD_ce, LOW); //
+delayMicroseconds(1);
+send_char_8bit_stb(0B01000110); //(0x41) firts 8 bits is address, every fixed as (0B01001011), see if clk finish LOW or HIGH Very important!
+delayMicroseconds(1);
+// On the 75878 the message have first 16*8 bits more 8 times to performe 128 bits(last byte is control: 0BXXX00000)
+    //blk0
+    send_char_without(0B11111010);  send_char_without(0B11111111); // 0-1    1:8     
+    send_char_without(0B11011111);  send_char_without(0B00000111); // 2-3  17:24     
+    send_char_without(0B00000000); 
+    //
+    send_char_without(0B00001000); // 4-5  33:40     
+delayMicroseconds(1);
+digitalWrite(VFD_ce, LOW); // 
+delayMicroseconds(1);
+}
+void LC75833_10_anime4(void){
+digitalWrite(VFD_ce, LOW); //
+delayMicroseconds(1);
+send_char_8bit_stb(0B01000110); //(0x41) firts 8 bits is address, every fixed as (0B01001011), see if clk finish LOW or HIGH Very important!
+delayMicroseconds(1);
+// On the 75878 the message have first 16*8 bits more 8 times to performe 128 bits(last byte is control: 0BXXX00000)
+    //blk1
+    send_char_without(0B00000000);  send_char_without(0B00000000); // 0-1    1:8      
+    send_char_without(0B00000000);  send_char_without(0B00000000); // 2-3  17:24   
+    send_char_without(0B00000000);  
+    //
+    send_char_without(0B10000000); // 4-5  33:40      
+delayMicroseconds(1);
+digitalWrite(VFD_ce, LOW); // 
+delayMicroseconds(1);
+}
+void LC75833_01_anime5(void){
+digitalWrite(VFD_ce, LOW); //
+delayMicroseconds(1);
+send_char_8bit_stb(0B01000110); //(0x41) firts 8 bits is address, every fixed as (0B01001011), see if clk finish LOW or HIGH Very important!
+delayMicroseconds(1);
+// On the 75878 the message have first 16*8 bits more 8 times to performe 128 bits(last byte is control: 0BXXX00000)
+    //blk2
+    send_char_without(0B00000000);  send_char_without(0B00000000); // 0-1    1:8   
+    send_char_without(0B00000000);  send_char_without(0B00000000); // 2-3  17:24    
+    send_char_without(0B00000000);  
+    //
+    send_char_without(0B01000000); // 4-5  33:40    
+delayMicroseconds(1);
+digitalWrite(VFD_ce, LOW); // 
+delayMicroseconds(1);
+}
+void LC75833_00_anime6(void){
+digitalWrite(VFD_ce, LOW); //
+delayMicroseconds(1);
+send_char_8bit_stb(0B01000110); //(0x41) firts 8 bits is address, every fixed as (0B01001011), see if clk finish LOW or HIGH Very important!
+delayMicroseconds(1);
+// On the 75878 the message have first 16*8 bits more 8 times to performe 128 bits(last byte is control: 0BXXX00000)
+    //blk0
+    send_char_without(0B01111010);  send_char_without(0B11001011); // 0-1    1:8     
+    send_char_without(0B10010100);  send_char_without(0B00000111); // 2-3  17:24     
+    send_char_without(0B00000000);  
+    //
+    send_char_without(0B00001000); // 4-5  33:40     
+delayMicroseconds(1);
+digitalWrite(VFD_ce, LOW); // 
+delayMicroseconds(1);
+}
+void LC75833_10_anime7(void){
+digitalWrite(VFD_ce, LOW); //
+delayMicroseconds(1);
+send_char_8bit_stb(0B01000110); //(0x41) firts 8 bits is address, every fixed as (0B01001011), see if clk finish LOW or HIGH Very important!
+delayMicroseconds(1);
+// On the 75878 the message have first 16*8 bits more 8 times to performe 128 bits(last byte is control: 0BXXX00000)
+    //blk1
+    send_char_without(0B00000000);  send_char_without(0B00000000); // 0-1    1:8      
+    send_char_without(0B00000000);  send_char_without(0B00000000); // 2-3  17:24   
+    send_char_without(0B00000000);  
+    //
+    send_char_without(0B10000000); // 4-5  33:40      
+delayMicroseconds(1);
+digitalWrite(VFD_ce, LOW); // 
+delayMicroseconds(1);
+}
+void LC75833_01_anime8(void){
+digitalWrite(VFD_ce, LOW); //
+delayMicroseconds(1);
+send_char_8bit_stb(0B01000110); //(0x41) firts 8 bits is address, every fixed as (0B01001011), see if clk finish LOW or HIGH Very important!
+delayMicroseconds(1);
+// On the 75878 the message have first 16*8 bits more 8 times to performe 128 bits(last byte is control: 0BXXX00000)
+    //blk2
+    send_char_without(0B00000000);  send_char_without(0B00000000); // 0-1    1:8   
+    send_char_without(0B00000000);  send_char_without(0B00000000); // 2-3  17:24    
+    send_char_without(0B00000000);  
+    //
+    send_char_without(0B01000000); // 4-5  33:40    
+delayMicroseconds(1);
+digitalWrite(VFD_ce, LOW); // 
+delayMicroseconds(1);
+}
+void LC75833_00_anime9(void){
+digitalWrite(VFD_ce, LOW); //
+delayMicroseconds(1);
+send_char_8bit_stb(0B01000110); //(0x41) firts 8 bits is address, every fixed as (0B01001011), see if clk finish LOW or HIGH Very important!
+delayMicroseconds(1);
+// On the 75878 the message have first 16*8 bits more 8 times to performe 128 bits(last byte is control: 0BXXX00000)
+    //blk0
+    send_char_without(0B00000000);  send_char_without(0B00000000); // 0-1    1:8     
+    send_char_without(0B00000000);  send_char_without(0B00000000); // 2-3  17:24     
+    send_char_without(0B00000000);  
+    //
+    send_char_without(0B00001000); // 4-5  33:40     
+delayMicroseconds(1);
+digitalWrite(VFD_ce, LOW); // 
+delayMicroseconds(1);
+}
+void LC75833_10_animeA(void){
+digitalWrite(VFD_ce, LOW); //
+delayMicroseconds(1);
+send_char_8bit_stb(0B01000110); //(0x41) firts 8 bits is address, every fixed as (0B01001011), see if clk finish LOW or HIGH Very important!
+delayMicroseconds(1);
+// On the 75878 the message have first 16*8 bits more 8 times to performe 128 bits(last byte is control: 0BXXX00000)
+    //blk1
+    send_char_without(0B00000000);  send_char_without(0B00000000); // 0-1    1:8      
+    send_char_without(0B00000000);  send_char_without(0B00000000); // 2-3  17:24   
+    send_char_without(0B00000000);  
+    //
+    send_char_without(0B10000000); // 4-5  33:40      
+delayMicroseconds(1);
+digitalWrite(VFD_ce, LOW); // 
+delayMicroseconds(1);
+}
+void LC75833_01_animeB(void){
+digitalWrite(VFD_ce, LOW); //
+delayMicroseconds(1);
+send_char_8bit_stb(0B01000110); //(0x41) firts 8 bits is address, every fixed as (0B01001011), see if clk finish LOW or HIGH Very important!
+delayMicroseconds(1);
+// On the 75878 the message have first 16*8 bits more 8 times to performe 128 bits(last byte is control: 0BXXX00000)
+    //blk2
+    send_char_without(0B00000000);  send_char_without(0B00000000); // 0-1    1:8   
+    send_char_without(0B00000000);  send_char_without(0B00000000); // 2-3  17:24    
+    send_char_without(0B00000000);  
+    //
+    send_char_without(0B01000000); // 4-5  33:40    
+delayMicroseconds(1);
+digitalWrite(VFD_ce, LOW); // 
+delayMicroseconds(1);
+}
+/********************************************************************/
+void showHiFolks(){
+      LC75833_00();
+      LC75833_10();
+      LC75833_01();
+      //
+      LC75853_00();
+      LC75853_10();
+      LC75853_01();  
+}
+void showWheels(){
+         allOFF_LC75853();
+                LC75833_00_anime0();
+                LC75833_10_anime1();
+                LC75833_01_anime2();
+                delay(50);
+                LC75833_00_anime3();
+                LC75833_10_anime4();
+                LC75833_01_anime5();
+                delay(50);
+                LC75833_00_anime6();
+                LC75833_10_anime7();
+                LC75833_01_anime8();
+                delay(50);
+                LC75833_00_anime9();
+                LC75833_10_animeA();
+                LC75833_01_animeB();
+                delay(50);
+}
+void loop() {
+unsigned int r=0;
+cycle=!cycle;
+allOFF_LC75833(); // All off
+allOFF_LC75853(); // All off
+delay(500);
+allON_LC75833(); // All on 
+allON_LC75853(); // All on
+delay(4000);
+   while(cycle){
+    r=r+10;
+          if(digitalRead(VFD_out)==LOW){
+                 read_char_32bit_stb();
+          }
+          //Comment the lines below to allow timer to read keys!!!
+          /* // From here
+      showHiFolks();
+      delay(r);
+      showWheels();
+      delay(50);
+      if (r>=300){
+        cycle=!cycle;
+      }
+      // to here!!!
+      */ 
+   }
+}
